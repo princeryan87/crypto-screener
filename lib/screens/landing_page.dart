@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/animated_candlestick_background.dart';
 import 'screening_page.dart';
-import '../screening/screening_engine.dart';
+import '../models/strategy_signal.dart';
 
 /// Landing/splash page - pintu masuk pertama app. User pilih mode
 /// SPOT atau FUTURES sebelum masuk ke halaman screening.
