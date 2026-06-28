@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../widgets/animated_candlestick_background.dart';
 import '../widgets/cryptostrat_logo.dart';
+import '../widgets/donation_dialog.dart';
 import '../screening/screening_engine.dart';
 import '../services/binance_api_service.dart';
 import '../models/strategy_signal.dart';
@@ -39,6 +41,17 @@ class _LandingPageState extends State<LandingPage> {
   String get _composedSymbol =>
       '${_baseController.text.trim().toUpperCase()}'
       '${_quoteController.text.trim().toUpperCase()}';
+
+  /// Dipanggil saat user menekan tombol back Android di halaman root
+  /// (LandingPage). Menampilkan dialog donasi QRIS dulu - app HANYA
+  /// ditutup jika user secara eksplisit menekan "Keluar App" di
+  /// dialog itu.
+  Future<void> _handleBackPress() async {
+    final shouldExit = await showDonationDialog(context);
+    if (shouldExit == true) {
+      SystemNavigator.pop();
+    }
+  }
 
   Future<void> _onAnalyzePressed(BuildContext context, MarketType mode) async {
     final base = _baseController.text.trim();
@@ -97,105 +110,132 @@ class _LandingPageState extends State<LandingPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsPage()),
-              );
-            },
-          ),
-        ],
-      ),
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          // Animasi candlestick bergerak sebagai background, samar
-          // supaya tidak mengganggu keterbacaan teks/input di atasnya
-          const Positioned.fill(
-            child: AnimatedCandlestickBackground(opacity: 0.28),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppColors.background.withOpacity(0.4),
-                    AppColors.background.withOpacity(0.85),
-                    AppColors.background,
-                  ],
-                  stops: const [0.0, 0.6, 1.0],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _handleBackPress();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: 'Settings',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingsPage()),
+                );
+              },
+            ),
+          ],
+        ),
+        extendBodyBehindAppBar: true,
+        body: Stack(
+          children: [
+            // Animasi candlestick bergerak sebagai background, samar
+            // supaya tidak mengganggu keterbacaan teks/input di
+            // atasnya
+            const Positioned.fill(
+              child: AnimatedCandlestickBackground(opacity: 0.28),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppColors.background.withOpacity(0.4),
+                      AppColors.background.withOpacity(0.85),
+                      AppColors.background,
+                    ],
+                    stops: const [0.0, 0.6, 1.0],
+                  ),
                 ),
               ),
             ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  const Spacer(flex: 2),
-                  Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.primaryGreen.withOpacity(0.1),
-                          border: Border.all(
-                            color: AppColors.primaryGreen.withOpacity(0.4),
-                            width: 1.5,
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  children: [
+                    const Spacer(flex: 2),
+                    Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.primaryGreen.withOpacity(0.1),
+                            border: Border.all(
+                              color:
+                                  AppColors.primaryGreen.withOpacity(0.4),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const CryptostratLogo(size: 40),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'CRYPTOSTRAT',
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 2,
+                            color: AppColors.primaryGreen,
                           ),
                         ),
-                        child: const CryptostratLogo(size: 40),
-                      ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        'CRYPTOSTRAT',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 2,
-                          color: AppColors.primaryGreen,
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Crypto Analyzer untuk Binance\nSpot & Futures',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 14,
+                            height: 1.4,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Crypto Analyzer untuk Binance\nSpot & Futures',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 14,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(flex: 2),
-                  _PairInputSection(
-                    baseController: _baseController,
-                    quoteController: _quoteController,
-                    isValidating: _isValidating,
-                    validationError: _validationError,
-                    onAnalyzeSpot: () =>
-                        _onAnalyzePressed(context, MarketType.spot),
-                    onAnalyzeFutures: () =>
-                        _onAnalyzePressed(context, MarketType.futures),
-                  ),
-                  const Spacer(flex: 3),
-                ],
+                      ],
+                    ),
+                    const Spacer(flex: 2),
+                    _PairInputSection(
+                      baseController: _baseController,
+                      quoteController: _quoteController,
+                      isValidating: _isValidating,
+                      validationError: _validationError,
+                      onAnalyzeSpot: () =>
+                          _onAnalyzePressed(context, MarketType.spot),
+                      onAnalyzeFutures: () =>
+                          _onAnalyzePressed(context, MarketType.futures),
+                    ),
+                    const Spacer(flex: 2),
+                    const _FooterCredit(),
+                    const SizedBox(height: 8),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Footer credit di bagian paling bawah Landing Page.
+class _FooterCredit extends StatelessWidget {
+  const _FooterCredit();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Created By: Muslimin Juni - Powered by Claude',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        color: AppColors.textMuted.withOpacity(0.7),
+        fontSize: 10.5,
       ),
     );
   }
