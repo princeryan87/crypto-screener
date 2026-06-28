@@ -8,15 +8,17 @@ import '../widgets/pulse_heartbeat_loader.dart';
 import '../widgets/signal_card.dart';
 import '../widgets/disclaimer_banner.dart';
 
-/// Halaman Analyze - dipanggil dari tombol "ANALYZE" di Landing Page.
-/// Menjalankan SEMUA strategi (Spot + Futures) untuk SATU pair yang
-/// dipilih user, menampilkan hasil dalam list scrollable, lalu (jika
-/// API key Gemini sudah di-set di Settings) menambahkan analisis AI +
-/// rekomendasi Do's & Don'ts di bagian paling akhir.
+/// Halaman Analyze - dipanggil dari salah satu tombol "ANALYZE SPOT"
+/// atau "ANALYZE FUTURES" di Landing Page. Menjalankan strategi
+/// SESUAI MODE yang dipilih (Spot: 5 strategi, Futures: 4 strategi)
+/// untuk SATU pair, menampilkan hasil dalam list scrollable, lalu
+/// (jika API key Gemini sudah di-set di Settings) menambahkan
+/// analisis AI + rekomendasi Do's & Don'ts di bagian paling akhir.
 class AnalyzePage extends StatefulWidget {
   final String symbol;
+  final MarketType mode;
 
-  const AnalyzePage({super.key, required this.symbol});
+  const AnalyzePage({super.key, required this.symbol, required this.mode});
 
   @override
   State<AnalyzePage> createState() => _AnalyzePageState();
@@ -47,7 +49,9 @@ class _AnalyzePageState extends State<AnalyzePage> {
     });
 
     try {
-      final results = await _engine.analyzeSinglePair(widget.symbol);
+      final results = widget.mode == MarketType.spot
+          ? await _engine.analyzeSpotPair(widget.symbol)
+          : await _engine.analyzeFuturesPair(widget.symbol);
       setState(() => _signals = results);
     } catch (e) {
       setState(() {
@@ -104,12 +108,37 @@ class _AnalyzePageState extends State<AnalyzePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.symbol,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: AppColors.primaryGreen,
-          ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.symbol,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryGreen,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: widget.mode == MarketType.spot
+                    ? AppColors.primaryGreen.withOpacity(0.15)
+                    : AppColors.warningAmber.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                widget.mode == MarketType.spot ? 'SPOT' : 'FUTURES',
+                style: TextStyle(
+                  color: widget.mode == MarketType.spot
+                      ? AppColors.primaryGreen
+                      : AppColors.warningAmber,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       body: SafeArea(
@@ -156,11 +185,17 @@ class _AnalyzePageState extends State<AnalyzePage> {
   }
 
   Widget _buildResultList() {
+    final totalStrategies = widget.mode == MarketType.spot ? 5 : 4;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (widget.mode == MarketType.futures) ...[
+          DisclaimerBanner.leverage(),
+          const SizedBox(height: 14),
+        ],
         Text(
-          '${_signals.length} sinyal ditemukan dari 9 strategi',
+          '${_signals.length} sinyal ditemukan dari $totalStrategies strategi '
+          '${widget.mode == MarketType.spot ? "Spot" : "Futures"}',
           style: const TextStyle(
             color: AppColors.textSecondary,
             fontSize: 12,

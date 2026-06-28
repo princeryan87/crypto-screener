@@ -2,36 +2,125 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/animated_candlestick_background.dart';
 import '../widgets/cryptostrat_logo.dart';
-import 'screening_page.dart';
-import 'analyze_page.dart';
+import '../screening/screening_engine.dart';
+import '../services/binance_api_service.dart';
 import '../models/strategy_signal.dart';
+import 'analyze_page.dart';
+import 'settings_page.dart';
 
-/// Landing/splash page - pintu masuk pertama app. User pilih mode
-/// SPOT atau FUTURES sebelum masuk ke halaman screening.
-class LandingPage extends StatelessWidget {
+/// Landing page - satu-satunya halaman utama app (mode screening
+/// massal Spot/Futures sudah DIHAPUS, lihat catatan di
+/// ScreeningEngine). User mengetik sendiri base+quote asset pair yang
+/// mau dianalisis, lalu pilih mode lewat salah satu dari 2 tombol
+/// Analyze terpisah (Spot / Futures) - validasi pair dilakukan SAAT
+/// tombol ditekan, bukan saat mengetik.
+class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
 
-  void _navigateToMode(BuildContext context, MarketType market) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ScreeningPage(market: market),
-      ),
-    );
+  @override
+  State<LandingPage> createState() => _LandingPageState();
+}
+
+class _LandingPageState extends State<LandingPage> {
+  final _baseController = TextEditingController(text: 'BTC');
+  final _quoteController = TextEditingController(text: 'USDT');
+  final _engine = ScreeningEngine();
+
+  bool _isValidating = false;
+  String? _validationError;
+
+  @override
+  void dispose() {
+    _baseController.dispose();
+    _quoteController.dispose();
+    super.dispose();
+  }
+
+  String get _composedSymbol =>
+      '${_baseController.text.trim().toUpperCase()}'
+      '${_quoteController.text.trim().toUpperCase()}';
+
+  Future<void> _onAnalyzePressed(BuildContext context, MarketType mode) async {
+    final base = _baseController.text.trim();
+    final quote = _quoteController.text.trim();
+
+    if (base.isEmpty || quote.isEmpty) {
+      setState(() {
+        _validationError = 'Isi dulu kedua kolom pair (contoh: BTC & USDT).';
+      });
+      return;
+    }
+
+    setState(() {
+      _isValidating = true;
+      _validationError = null;
+    });
+
+    final symbol = _composedSymbol;
+    final binanceMarket =
+        mode == MarketType.spot ? BinanceMarket.spot : BinanceMarket.futures;
+
+    try {
+      final exists = await _engine.validatePairExists(
+        symbol: symbol,
+        market: binanceMarket,
+      );
+
+      if (!mounted) return;
+
+      if (!exists) {
+        setState(() {
+          _isValidating = false;
+          _validationError =
+              'Pair $symbol tidak ditemukan di Binance '
+              '${mode == MarketType.spot ? "Spot" : "Futures"}. '
+              'Cek lagi penulisan base/quote asset-nya.';
+        });
+        return;
+      }
+
+      setState(() => _isValidating = false);
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AnalyzePage(symbol: symbol, mode: mode),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isValidating = false;
+        _validationError = 'Gagal memeriksa pair: $e';
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              );
+            },
+          ),
+        ],
+      ),
+      extendBodyBehindAppBar: true,
       body: Stack(
         children: [
           // Animasi candlestick bergerak sebagai background, samar
-          // supaya tidak mengganggu keterbacaan teks/tombol di atasnya
+          // supaya tidak mengganggu keterbacaan teks/input di atasnya
           const Positioned.fill(
             child: AnimatedCandlestickBackground(opacity: 0.28),
           ),
-          // Gradient overlay supaya bagian atas (logo) dan bawah
-          // (tombol) tetap kontras tinggi terhadap background animasi
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -80,7 +169,7 @@ class LandingPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Crypto Screener untuk Binance\nSpot & Futures',
+                        'Crypto Analyzer untuk Binance\nSpot & Futures',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: AppColors.textSecondary,
@@ -90,36 +179,18 @@ class LandingPage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const Spacer(flex: 1),
-                  const _QuickAnalyzeSection(),
-                  const Spacer(flex: 1),
-                  const Text(
-                    'PILIH MODE',
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _ModeCard(
-                    title: 'SPOT',
-                    subtitle: '5 strategi - Momentum, Whale Watch, dll',
-                    icon: Icons.trending_up_rounded,
-                    accentColor: AppColors.primaryGreen,
-                    onTap: () => _navigateToMode(context, MarketType.spot),
-                  ),
-                  const SizedBox(height: 14),
-                  _ModeCard(
-                    title: 'FUTURES',
-                    subtitle: '4 strategi - Funding Rate, Open Interest',
-                    icon: Icons.bolt_rounded,
-                    accentColor: AppColors.warningAmber,
-                    onTap: () => _navigateToMode(context, MarketType.futures),
-                    badge: 'LEVERAGE',
-                  ),
                   const Spacer(flex: 2),
+                  _PairInputSection(
+                    baseController: _baseController,
+                    quoteController: _quoteController,
+                    isValidating: _isValidating,
+                    validationError: _validationError,
+                    onAnalyzeSpot: () =>
+                        _onAnalyzePressed(context, MarketType.spot),
+                    onAnalyzeFutures: () =>
+                        _onAnalyzePressed(context, MarketType.futures),
+                  ),
+                  const Spacer(flex: 3),
                 ],
               ),
             ),
@@ -130,139 +201,28 @@ class LandingPage extends StatelessWidget {
   }
 }
 
-class _ModeCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color accentColor;
-  final VoidCallback onTap;
-  final String? badge;
+class _PairInputSection extends StatelessWidget {
+  final TextEditingController baseController;
+  final TextEditingController quoteController;
+  final bool isValidating;
+  final String? validationError;
+  final VoidCallback onAnalyzeSpot;
+  final VoidCallback onAnalyzeFutures;
 
-  const _ModeCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.accentColor,
-    required this.onTap,
-    this.badge,
+  const _PairInputSection({
+    required this.baseController,
+    required this.quoteController,
+    required this.isValidating,
+    required this.validationError,
+    required this.onAnalyzeSpot,
+    required this.onAnalyzeFutures,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: accentColor.withOpacity(0.35)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: accentColor, size: 26),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 17,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        if (badge != null) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.warningAmber.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              badge!,
-                              style: const TextStyle(
-                                color: AppColors.warningAmber,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: accentColor.withOpacity(0.6),
-                size: 16,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Section "Quick Analyze" di Landing Page - dropdown pilih pair +
-/// tombol Analyze. Berbeda dari mode Spot/Futures (yang screening
-/// SEMUA pair sekaligus), fitur ini analisis SATU pair spesifik
-/// dengan SEMUA strategi (Spot + Futures) sekaligus, hasilnya tampil
-/// di popup scrollable (lihat AnalyzePage).
-class _QuickAnalyzeSection extends StatefulWidget {
-  const _QuickAnalyzeSection();
-
-  @override
-  State<_QuickAnalyzeSection> createState() => _QuickAnalyzeSectionState();
-}
-
-class _QuickAnalyzeSectionState extends State<_QuickAnalyzeSection> {
-  // Daftar pair populer untuk pilihan cepat. Tidak fetch dynamic dari
-  // exchangeInfo di sini supaya landing page tetap ringan/cepat -
-  // user yang butuh pair lain bisa pakai mode Spot/Futures penuh.
-  static const List<String> _popularPairs = [
-    'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
-    'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'DOTUSDT',
-  ];
-
-  String _selectedPair = 'BTCUSDT';
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
@@ -271,16 +231,12 @@ class _QuickAnalyzeSectionState extends State<_QuickAnalyzeSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(
-                Icons.search_rounded,
-                color: AppColors.primaryGreen,
-                size: 16,
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'ANALISIS CEPAT',
+              Icon(Icons.search_rounded, color: AppColors.primaryGreen, size: 16),
+              SizedBox(width: 6),
+              Text(
+                'MASUKKAN PAIR',
                 style: TextStyle(
                   color: AppColors.textMuted,
                   fontSize: 11,
@@ -290,69 +246,111 @@ class _QuickAnalyzeSectionState extends State<_QuickAnalyzeSection> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceElevated,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedPair,
-                      isExpanded: true,
-                      dropdownColor: AppColors.surfaceElevated,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      icon: const Icon(
-                        Icons.expand_more_rounded,
-                        color: AppColors.textMuted,
-                      ),
-                      items: _popularPairs
-                          .map(
-                            (pair) => DropdownMenuItem(
-                              value: pair,
-                              child: Text(
-                                '${pair.replaceFirst('USDT', '')} / USDT',
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() => _selectedPair = value);
-                        }
-                      },
-                    ),
+                child: _PairTextField(
+                  controller: baseController,
+                  hint: 'BTC',
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                  '/',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => AnalyzePage(symbol: _selectedPair),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 14,
-                  ),
+              Expanded(
+                child: _PairTextField(
+                  controller: quoteController,
+                  hint: 'USDT',
                 ),
-                child: const Text('ANALYZE'),
+              ),
+            ],
+          ),
+          if (validationError != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              validationError!,
+              style: const TextStyle(
+                color: AppColors.dangerRed,
+                fontSize: 12,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: isValidating ? null : onAnalyzeSpot,
+                  child: isValidating
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.black,
+                          ),
+                        )
+                      : const Text('ANALYZE SPOT'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.surfaceElevated,
+                    foregroundColor: AppColors.warningAmber,
+                    side: const BorderSide(color: AppColors.warningAmber),
+                  ),
+                  onPressed: isValidating ? null : onAnalyzeFutures,
+                  child: isValidating
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.warningAmber,
+                          ),
+                        )
+                      : const Text('ANALYZE FUTURES'),
+                ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PairTextField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+
+  const _PairTextField({required this.controller, required this.hint});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      textAlign: TextAlign.center,
+      textCapitalization: TextCapitalization.characters,
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontWeight: FontWeight.bold,
+        fontSize: 16,
+      ),
+      decoration: InputDecoration(
+        hintText: hint,
+        contentPadding: const EdgeInsets.symmetric(vertical: 14),
       ),
     );
   }

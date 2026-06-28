@@ -4,7 +4,7 @@ import '../theme/app_colors.dart';
 import 'disclaimer_banner.dart';
 
 /// Card untuk menampilkan satu StrategySignal. Dipakai di
-/// ScreeningPage untuk Spot maupun Futures.
+/// AnalyzePage untuk hasil analisis Spot maupun Futures.
 class SignalCard extends StatelessWidget {
   final StrategySignal signal;
 
