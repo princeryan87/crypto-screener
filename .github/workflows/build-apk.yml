@@ -48,16 +48,29 @@ jobs:
       - name: Scaffold fresh Flutter project
         run: flutter create --project-name cryptostrat --org com.cryptostrat scaffold
 
-      # 5. Timpa lib/ dan pubspec.yaml hasil scaffold dengan kode kita
-      # dari folder source/. Folder android/, ios/, dll dari hasil
-      # scaffold TETAP DIPAKAI APA ADANYA (tidak disentuh), KECUALI
-      # AndroidManifest.xml yang perlu tambahan permission INTERNET
-      # (lihat step berikutnya).
+      # 5. Timpa lib/, pubspec.yaml, dan assets/ hasil scaffold dengan
+      # kode kita dari folder source/. Folder android/, ios/, dll dari
+      # hasil scaffold TETAP DIPAKAI APA ADANYA (tidak disentuh),
+      # KECUALI AndroidManifest.xml yang perlu tambahan permission
+      # INTERNET (lihat step berikutnya), dan ic_launcher yang akan
+      # ditimpa oleh flutter_launcher_icons (lihat step 5c).
       - name: Overlay our code onto the scaffold
         run: |
           rm -rf scaffold/lib
           cp -r source/lib scaffold/lib
           cp source/pubspec.yaml scaffold/pubspec.yaml
+
+          if [ ! -f "source/assets/icon/app_icon.png" ]; then
+            echo "::error::File source/assets/icon/app_icon.png TIDAK ADA di repo. Cek apakah file ini benar-benar sudah di-commit ke branch main."
+            echo "--- Isi folder source/ (apa yang ter-checkout dari repo) ---"
+            find source -maxdepth 3 -type f
+            exit 1
+          fi
+
+          rm -rf scaffold/assets
+          cp -r source/assets scaffold/assets
+          echo "--- Isi scaffold/assets (setelah copy, harus ada app_icon.png) ---"
+          find scaffold/assets -type f
 
       # 5b. Tambahkan permission INTERNET ke AndroidManifest.xml.
       # Project hasil `flutter create` TIDAK menyertakan permission ini
@@ -70,10 +83,19 @@ jobs:
           sed -i 's#<manifest xmlns:android="http://schemas.android.com/apk/res/android">#<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>#' "$MANIFEST"
           cat "$MANIFEST"
 
-      # 6. Install semua dependency (http, dll dari pubspec.yaml kita)
+      # 6. Install semua dependency (http, shared_preferences,
+      # flutter_launcher_icons, dll dari pubspec.yaml kita)
       - name: Install dependencies
         working-directory: scaffold
         run: flutter pub get
+
+      # 6b. Generate app icon launcher dari assets/icon/app_icon.png
+      # untuk SEMUA resolusi Android (mdpi, hdpi, xhdpi, dst) secara
+      # otomatis, menimpa icon default Flutter ("F" biru-putih) hasil
+      # scaffold dengan logo Cryptostrat.
+      - name: Generate app launcher icon
+        working-directory: scaffold
+        run: dart run flutter_launcher_icons
 
       # 7. Cek error lebih dulu sebelum build penuh
       - name: Analyze code
