@@ -4,6 +4,7 @@ import '../screening/screening_engine.dart';
 import '../theme/app_colors.dart';
 import '../widgets/signal_card.dart';
 import '../widgets/disclaimer_banner.dart';
+import '../widgets/pulse_heartbeat_loader.dart';
 import 'settings_page.dart';
 
 /// Halaman utama setelah user pilih mode dari LandingPage. Berisi 2
@@ -68,6 +69,7 @@ class _ScreeningTabState extends State<_ScreeningTab> {
   bool _hasRunOnce = false;
 
   bool get _isFutures => widget.market == MarketType.futures;
+  String get _marketLabel => _isFutures ? 'Futures' : 'Spot';
 
   @override
   void initState() {
@@ -142,6 +144,16 @@ class _ScreeningTabState extends State<_ScreeningTab> {
             tooltip: 'Ganti Mode',
           ),
         ],
+        bottom: _isLoading && _hasRunOnce
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(3),
+                child: LinearProgressIndicator(
+                  color: AppColors.primaryGreen,
+                  backgroundColor: AppColors.surfaceElevated,
+                  minHeight: 3,
+                ),
+              )
+            : null,
       ),
       body: RefreshIndicator(
         color: AppColors.primaryGreen,
@@ -156,18 +168,10 @@ class _ScreeningTabState extends State<_ScreeningTab> {
                 DisclaimerBanner.leverage(),
                 const SizedBox(height: 14),
               ],
-              if (_isLoading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: LinearProgressIndicator(
-                    color: AppColors.primaryGreen,
-                    backgroundColor: AppColors.surfaceElevated,
-                  ),
-                ),
               if (_errorMessage != null)
                 Container(
                   padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(top: 10),
+                  margin: const EdgeInsets.only(bottom: 10),
                   decoration: BoxDecoration(
                     color: AppColors.dangerRed.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(10),
@@ -185,10 +189,11 @@ class _ScreeningTabState extends State<_ScreeningTab> {
                 ),
               Expanded(
                 child: !_hasRunOnce && _isLoading
-                    ? const Center(
-                        child: Text(
-                          'Memindai pasar...',
-                          style: TextStyle(color: AppColors.textSecondary),
+                    ? Center(
+                        child: PulseHeartbeatLoader(
+                          label: 'Memindai pasar $_marketLabel...\n'
+                              'Proses ini bisa memakan waktu hingga '
+                              '1-2 menit untuk scan ratusan pair.',
                         ),
                       )
                     : _signals.isEmpty

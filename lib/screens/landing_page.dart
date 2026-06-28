@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/animated_candlestick_background.dart';
+import '../widgets/cryptostrat_logo.dart';
 import 'screening_page.dart';
+import 'analyze_page.dart';
 import '../models/strategy_signal.dart';
 
 /// Landing/splash page - pintu masuk pertama app. User pilih mode
@@ -64,11 +66,7 @@ class LandingPage extends StatelessWidget {
                             width: 1.5,
                           ),
                         ),
-                        child: const Icon(
-                          Icons.candlestick_chart_rounded,
-                          color: AppColors.primaryGreen,
-                          size: 40,
-                        ),
+                        child: const CryptostratLogo(size: 40),
                       ),
                       const SizedBox(height: 20),
                       const Text(
@@ -92,7 +90,9 @@ class LandingPage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const Spacer(flex: 3),
+                  const Spacer(flex: 1),
+                  const _QuickAnalyzeSection(),
+                  const Spacer(flex: 1),
                   const Text(
                     'PILIH MODE',
                     style: TextStyle(
@@ -230,6 +230,129 @@ class _ModeCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Section "Quick Analyze" di Landing Page - dropdown pilih pair +
+/// tombol Analyze. Berbeda dari mode Spot/Futures (yang screening
+/// SEMUA pair sekaligus), fitur ini analisis SATU pair spesifik
+/// dengan SEMUA strategi (Spot + Futures) sekaligus, hasilnya tampil
+/// di popup scrollable (lihat AnalyzePage).
+class _QuickAnalyzeSection extends StatefulWidget {
+  const _QuickAnalyzeSection();
+
+  @override
+  State<_QuickAnalyzeSection> createState() => _QuickAnalyzeSectionState();
+}
+
+class _QuickAnalyzeSectionState extends State<_QuickAnalyzeSection> {
+  // Daftar pair populer untuk pilihan cepat. Tidak fetch dynamic dari
+  // exchangeInfo di sini supaya landing page tetap ringan/cepat -
+  // user yang butuh pair lain bisa pakai mode Spot/Futures penuh.
+  static const List<String> _popularPairs = [
+    'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
+    'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'DOTUSDT',
+  ];
+
+  String _selectedPair = 'BTCUSDT';
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.search_rounded,
+                color: AppColors.primaryGreen,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'ANALISIS CEPAT',
+                style: TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceElevated,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedPair,
+                      isExpanded: true,
+                      dropdownColor: AppColors.surfaceElevated,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      icon: const Icon(
+                        Icons.expand_more_rounded,
+                        color: AppColors.textMuted,
+                      ),
+                      items: _popularPairs
+                          .map(
+                            (pair) => DropdownMenuItem(
+                              value: pair,
+                              child: Text(
+                                '${pair.replaceFirst('USDT', '')} / USDT',
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _selectedPair = value);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => AnalyzePage(symbol: _selectedPair),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 14,
+                  ),
+                ),
+                child: const Text('ANALYZE'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -346,4 +346,200 @@ class ScreeningEngine {
     };
     return topSymbols.contains(symbol);
   }
+
+  // ---------------------------------------------------------------
+  // QUICK ANALYZE - SATU pair, SEMUA strategi (Spot + Futures)
+  // ---------------------------------------------------------------
+
+  /// Jalankan SEMUA 9 strategi (5 Spot + 4 Futures) khusus untuk SATU
+  /// symbol yang dipilih user dari dropdown Landing Page. Berbeda
+  /// dari runSpotScreening/runFuturesScreening yang scan SEMUA pair,
+  /// method ini fokus dan lebih cepat karena symbol sudah pasti -
+  /// tidak perlu tahap broad filter sama sekali.
+  ///
+  /// Beberapa strategi butuh data Futures (funding rate, OI) yang
+  /// hanya tersedia jika [symbol] memang listed di Binance Futures -
+  /// jika gagal fetch, strategi Futures untuk symbol itu dilewati
+  /// secara diam-diam (tidak menggagalkan hasil Spot).
+  Future<List<StrategySignal>> analyzeSinglePair(String symbol) async {
+    final signals = <StrategySignal>[];
+
+    // --- SPOT ---
+    try {
+      final spotTicker = (await _api.fetchAllTickers(BinanceMarket.spot))
+          .firstWhere((t) => t.symbol == symbol);
+
+      final klines1h = await _api.fetchKlines(
+        market: BinanceMarket.spot,
+        symbol: symbol,
+        interval: '1h',
+        limit: 168,
+      );
+      final klines4h = await _api.fetchKlines(
+        market: BinanceMarket.spot,
+        symbol: symbol,
+        interval: '4h',
+        limit: 42,
+      );
+      final klinesDaily = await _api.fetchKlines(
+        market: BinanceMarket.spot,
+        symbol: symbol,
+        interval: '1d',
+        limit: 55,
+      );
+      final isTopCap = _isLikelyTopMarketCapPlaceholder(symbol);
+
+      final momentumSignal = _momentumBreakout.evaluate(
+        symbol: symbol,
+        ticker: spotTicker,
+        klines1h: klines1h,
+      );
+      if (momentumSignal != null) signals.add(momentumSignal);
+
+      final volumeSignal = _volumeSurge.evaluate(
+        symbol: symbol,
+        ticker: spotTicker,
+        klines4h: klines4h,
+      );
+      if (volumeSignal != null) signals.add(volumeSignal);
+
+      final accumulationSignal = _accumulationZone.evaluate(
+        symbol: symbol,
+        klinesDaily: klinesDaily,
+        klines1h: klines1h.length > 24
+            ? klines1h.sublist(klines1h.length - 24)
+            : klines1h,
+      );
+      if (accumulationSignal != null) signals.add(accumulationSignal);
+
+      final lowCapSignal = _lowCapHunter.evaluate(
+        symbol: symbol,
+        klines1h: klines1h,
+        isTopMarketCap: isTopCap,
+      );
+      if (lowCapSignal != null) signals.add(lowCapSignal);
+
+      try {
+        final orderBook = await _api.fetchOrderBook(
+          market: BinanceMarket.spot,
+          symbol: symbol,
+        );
+        final klines15m = await _api.fetchKlines(
+          market: BinanceMarket.spot,
+          symbol: symbol,
+          interval: '15m',
+          limit: 30,
+        );
+        final whaleSignal = _whaleWatch.evaluate(
+          symbol: symbol,
+          orderBook: orderBook,
+          klines15m: klines15m,
+        );
+        if (whaleSignal != null) signals.add(whaleSignal);
+      } catch (_) {
+        // Order book gagal - lewati strategi Whale Watch saja
+      }
+    } catch (_) {
+      // Pair ini mungkin tidak listed di Spot - lewati semua strategi
+      // Spot, lanjut coba Futures di bawah.
+    }
+
+    // --- FUTURES ---
+    try {
+      final futuresTicker =
+          (await _api.fetchAllTickers(BinanceMarket.futures))
+              .firstWhere((t) => t.symbol == symbol);
+      final fundingRate = (await _api.fetchAllFundingRates())
+          .firstWhere((f) => f.symbol == symbol);
+
+      final klines1hFutures = await _api.fetchKlines(
+        market: BinanceMarket.futures,
+        symbol: symbol,
+        interval: '1h',
+        limit: 30,
+      );
+      final klines4hFutures = await _api.fetchKlines(
+        market: BinanceMarket.futures,
+        symbol: symbol,
+        interval: '4h',
+        limit: 10,
+      );
+      final oiHist = await _api.fetchOpenInterestHistory(
+        symbol: symbol,
+        period: '1h',
+        limit: 30,
+      );
+
+      if (oiHist.length >= 5) {
+        final oiNow = oiHist.last.openInterest;
+        final oi1hAgo = oiHist[oiHist.length - 2].openInterest;
+        final oi4hAgo = oiHist[oiHist.length - 5].openInterest;
+        final oi24hAgo = oiHist.first.openInterest;
+
+        final priceChange4h = klines4hFutures.length >= 2
+            ? ((klines4hFutures.last.close -
+                        klines4hFutures[klines4hFutures.length - 2].close) /
+                    klines4hFutures[klines4hFutures.length - 2].close) *
+                100
+            : 0.0;
+
+        final trendSignal = _trendConfirm.evaluate(
+          symbol: symbol,
+          priceChange4hPercent: priceChange4h,
+          fundingRate: fundingRate,
+          oiNow: oiNow,
+          oi4hAgo: oi4hAgo,
+          currentVolume24h: futuresTicker.quoteVolume,
+          avgVolume7d: futuresTicker.quoteVolume, // TODO: lihat catatan
+          // di runFuturesScreening - placeholder yang sama
+        );
+        if (trendSignal != null) signals.add(trendSignal);
+
+        if (klines1hFutures.length >= 2) {
+          final lastChange = ((klines1hFutures.last.close -
+                      klines1hFutures.last.open) /
+                  klines1hFutures.last.open) *
+              100;
+          final prevCandle =
+              klines1hFutures[klines1hFutures.length - 2];
+          final prevChange =
+              ((prevCandle.close - prevCandle.open) / prevCandle.open) * 100;
+
+          final squeezeSignal = _squeezeRadar.evaluate(
+            symbol: symbol,
+            fundingRate: fundingRate,
+            oiNow: oiNow,
+            oi24hAgo: oi24hAgo,
+            priceChange1hLastCandlePercent: lastChange,
+            priceChange1hPreviousCandlePercent: prevChange,
+          );
+          if (squeezeSignal != null) signals.add(squeezeSignal);
+        }
+
+        final lowCapFuturesSignal = _lowCapMomentumFutures.evaluate(
+          symbol: symbol,
+          klines1h: klines1hFutures,
+          oiNow: oiNow,
+          oi1hAgo: oi1hAgo,
+          isTopMarketCap: _isLikelyTopMarketCapPlaceholder(symbol),
+        );
+        if (lowCapFuturesSignal != null) signals.add(lowCapFuturesSignal);
+
+        final divergenceSignal = _divergenceHunter.evaluate(
+          symbol: symbol,
+          priceChange4hPercent: priceChange4h,
+          oiNow: oiNow,
+          oi4hAgo: oi4hAgo,
+          currentFundingRate: fundingRate,
+          previousFundingRatePercent: fundingRate.fundingRatePercent,
+        );
+        if (divergenceSignal != null) signals.add(divergenceSignal);
+      }
+    } catch (_) {
+      // Pair ini mungkin tidak listed di Futures - hasil Spot saja
+      // tetap valid dan dikembalikan.
+    }
+
+    return signals;
+  }
 }
