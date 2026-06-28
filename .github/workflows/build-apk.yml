@@ -1,0 +1,83 @@
+name: Build APK
+
+# Workflow ini build APK Android secara otomatis di server GitHub
+# (cloud) - TIDAK butuh Flutter terinstal di komputer kamu sama
+# sekali. Cukup push/upload kode ke repo, GitHub yang compile.
+#
+# POLA: repo kita HANYA berisi folder lib/ + pubspec.yaml (logic app).
+# Boilerplate folder android/, ios/, dll TIDAK disimpan di repo -
+# di-generate ulang otomatis oleh `flutter create` setiap kali build,
+# supaya selalu cocok dengan versi Flutter SDK yang dipakai dan bebas
+# dari risiko salah tulis manual.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Ambil kode dari repo (isinya: lib/, pubspec.yaml, dan file
+      # pendukung lain - TANPA folder android/)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      # 2. Install Java (dibutuhkan Android build tools)
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 3. Install Flutter SDK di server GitHub
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.0'
+          channel: 'stable'
+
+      # 4. Generate project Flutter BARU yang lengkap (termasuk folder
+      # android/ resmi dari Flutter SDK) di folder terpisah bernama
+      # "scaffold". Ini langkah kunci - boilerplate Android dibuat
+      # otomatis, BUKAN ditulis manual.
+      - name: Scaffold fresh Flutter project
+        run: flutter create --project-name cryptostrat --org com.cryptostrat scaffold
+
+      # 5. Timpa lib/ dan pubspec.yaml hasil scaffold dengan kode kita
+      # dari folder source/. Folder android/, ios/, dll dari hasil
+      # scaffold TETAP DIPAKAI APA ADANYA (tidak disentuh).
+      - name: Overlay our code onto the scaffold
+        run: |
+          rm -rf scaffold/lib
+          cp -r source/lib scaffold/lib
+          cp source/pubspec.yaml scaffold/pubspec.yaml
+
+      # 6. Install semua dependency (http, dll dari pubspec.yaml kita)
+      - name: Install dependencies
+        working-directory: scaffold
+        run: flutter pub get
+
+      # 7. Cek error lebih dulu sebelum build penuh
+      - name: Analyze code
+        working-directory: scaffold
+        run: flutter analyze --no-fatal-infos
+        continue-on-error: true
+
+      # 8. Build APK release
+      - name: Build APK
+        working-directory: scaffold
+        run: flutter build apk --release
+
+      # 9. Upload hasil APK sebagai artifact yang bisa didownload dari
+      # tab Actions
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptostrat-release-apk
+          path: scaffold/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
