@@ -33,13 +33,20 @@ class _AnalyzePageState extends State<AnalyzePage> {
 
   _LoadStage _stage = _LoadStage.fetchingSignals;
   List<StrategySignal> _signals = [];
-  String? _geminiAnalysis;
+  GeminiAnalysisResult? _geminiResult;
+  String? _geminiErrorMessage;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _runAnalysis();
+  }
+
+  @override
+  void dispose() {
+    _geminiService.close();
+    super.dispose();
   }
 
   Future<void> _runAnalysis() async {
@@ -70,24 +77,25 @@ class _AnalyzePageState extends State<AnalyzePage> {
     }
 
     setState(() => _stage = _LoadStage.fetchingGeminiAnalysis);
-    try {
-      final analysis = await _geminiService.analyzeSignals(
-        apiKey: apiKey.trim(),
-        symbol: widget.symbol,
-        signals: _signals,
-      );
-      setState(() {
-        _geminiAnalysis = analysis;
-        _stage = _LoadStage.done;
-      });
-    } catch (e) {
-      // Gemini gagal BUKAN error fatal - hasil strategi tetap
-      // ditampilkan, cuma section Gemini-nya diisi pesan error kecil.
-      setState(() {
-        _geminiAnalysis = 'Analisis AI gagal dimuat: $e';
-        _stage = _LoadStage.done;
-      });
-    }
+    final result = await _geminiService.analyze(
+      apiKey: apiKey.trim(),
+      symbol: widget.symbol,
+      signals: _signals,
+    );
+    // analyze() TIDAK PERNAH throw - mengikuti pola Cuanstrat, semua
+    // kegagalan (key tidak valid, network error, rate limit, format
+    // tak terduga) sudah ditangani di dalam service dan dikembalikan
+    // sebagai null. Hasil strategi tetap ditampilkan walau Gemini
+    // gagal; cuma section Gemini-nya berisi pesan singkat.
+    setState(() {
+      _geminiResult = result;
+      _geminiErrorMessage = result == null
+          ? 'Analisis AI tidak tersedia saat ini (API key tidak valid, '
+              'limit tercapai, atau Gemini sedang bermasalah). Hasil '
+              'strategi di atas tetap berlaku.'
+          : null;
+      _stage = _LoadStage.done;
+    });
   }
 
   String get _loadingLabel {
@@ -218,7 +226,7 @@ class _AnalyzePageState extends State<AnalyzePage> {
           )
         else
           ..._signals.map((s) => SignalCard(signal: s)),
-        if (_geminiAnalysis != null) ...[
+        if (_geminiResult != null || _geminiErrorMessage != null) ...[
           const SizedBox(height: 8),
           Row(
             children: [
@@ -240,25 +248,75 @@ class _AnalyzePageState extends State<AnalyzePage> {
             ],
           ),
           const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.primaryGreen.withOpacity(0.3),
+          if (_geminiResult != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppColors.primaryGreen.withOpacity(0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _geminiResult!.text,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                  if (_geminiResult!.sources.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Divider(color: AppColors.border, height: 1),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Sumber berita yang dirujuk:',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    ..._geminiResult!.sources.map(
+                      (source) => Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '• $source',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceElevated,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Text(
+                _geminiErrorMessage!,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12.5,
+                  height: 1.4,
+                ),
               ),
             ),
-            child: Text(
-              _geminiAnalysis!,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 13,
-                height: 1.5,
-              ),
-            ),
-          ),
           const SizedBox(height: 16),
           const DisclaimerBanner(
             message:
