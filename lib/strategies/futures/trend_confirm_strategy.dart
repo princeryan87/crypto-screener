@@ -19,11 +19,16 @@ import '../strategy_base.dart';
 /// ini, disuplai sebagai parameter agar strategi tidak perlu tahu
 /// soal klines sama sekali).
 class TrendConfirmStrategy {
-  static const double minPriceChange4hPercent = 3.0;
-  static const double minOiChange4hPercent = 5.0;
+  final double minPriceChange4hPercent;
+  final double minOiChange4hPercent;
   static const double fundingMin = -0.03;
   static const double fundingMax = 0.05;
   static const double minVolumeMultiplier = 1.5;
+
+  const TrendConfirmStrategy({
+    this.minPriceChange4hPercent = 3.0,
+    this.minOiChange4hPercent = 5.0,
+  });
 
   StrategySignal? evaluate({
     required String symbol,

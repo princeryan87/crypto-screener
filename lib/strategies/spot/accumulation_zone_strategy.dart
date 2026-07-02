@@ -25,9 +25,13 @@ class AccumulationZoneStrategy {
   static const int bbPeriod = 20;
   static const double bbStdDevMultiplier = 2.0;
   static const double maxBbWidthPercentileRank = 20.0;
-  static const double maxSidewaysRangePercent = 4.0;
+  final double maxSidewaysRangePercent;
   static const int minSidewaysHours = 6;
   static const int dailyHistoryDays = 30;
+
+  const AccumulationZoneStrategy({
+    this.maxSidewaysRangePercent = 4.0,
+  });
 
   StrategySignal? evaluate({
     required String symbol,

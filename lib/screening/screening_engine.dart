@@ -1,4 +1,5 @@
 import '../models/strategy_signal.dart';
+import '../models/strategy_parameters.dart';
 import '../models/ticker_model.dart';
 import '../models/open_interest_model.dart';
 import '../services/binance_api_service.dart';
@@ -37,18 +38,17 @@ import '../strategies/futures/divergence_hunter_strategy.dart';
 class ScreeningEngine {
   final BinanceApiService _api = BinanceApiService();
 
-  // Spot strategies
-  final _momentumBreakout = MomentumBreakoutStrategy();
-  final _whaleWatch = WhaleWatchStrategy();
+  // Strategi yang parameternya tidak di-expose ke user (pakai
+  // default tetap) - tetap sebagai field.
   final _lowCapHunter = LowCapHunterStrategy();
   final _volumeSurge = VolumeSurgeStrategy();
-  final _accumulationZone = AccumulationZoneStrategy();
-
-  // Futures strategies
-  final _trendConfirm = TrendConfirmStrategy();
-  final _squeezeRadar = SqueezeRadarStrategy();
-  final _lowCapMomentumFutures = LowCapMomentumFuturesStrategy();
   final _divergenceHunter = DivergenceHunterStrategy();
+
+  // Strategi dengan parameter yang bisa di-tune user (MomentumBreakout,
+  // WhaleWatch, AccumulationZone, TrendConfirm, SqueezeRadar,
+  // LowCapMomentumFutures) dibuat inline saat analisis dijalankan
+  // dengan params dari StrategyParameters - lihat analyzeSpotPair &
+  // analyzeFuturesPair.
 
   // ---------------------------------------------------------------
   // VALIDASI PAIR
@@ -73,7 +73,10 @@ class ScreeningEngine {
 
   /// Jalankan SEMUA 5 strategi Spot untuk satu [symbol]. Dipanggil
   /// dari tombol "ANALYZE SPOT".
-  Future<List<StrategySignal>> analyzeSpotPair(String symbol) async {
+  Future<List<StrategySignal>> analyzeSpotPair(
+    String symbol,
+    StrategyParameters params,
+  ) async {
     final signals = <StrategySignal>[];
 
     final allTickers = await _api.fetchAllTickers(BinanceMarket.spot);
@@ -104,7 +107,11 @@ class ScreeningEngine {
     );
     final isTopCap = _isLikelyTopMarketCapPlaceholder(symbol);
 
-    final momentumSignal = _momentumBreakout.evaluate(
+    final momentumSignal = MomentumBreakoutStrategy(
+      rsiLowerBound: params.spotRsiLower,
+      rsiUpperBound: params.spotRsiUpper,
+      minVolumeMultiplier: params.spotVolumeMultiplier,
+    ).evaluate(
       symbol: symbol,
       ticker: ticker,
       klines1h: klines1h,
@@ -118,7 +125,9 @@ class ScreeningEngine {
     );
     if (volumeSignal != null) signals.add(volumeSignal);
 
-    final accumulationSignal = _accumulationZone.evaluate(
+    final accumulationSignal = AccumulationZoneStrategy(
+      maxSidewaysRangePercent: params.spotSidewaysMaxRangePercent,
+    ).evaluate(
       symbol: symbol,
       klinesDaily: klinesDaily,
       klines1h: klines1h.length > 24
@@ -145,7 +154,9 @@ class ScreeningEngine {
         interval: '15m',
         limit: 30,
       );
-      final whaleSignal = _whaleWatch.evaluate(
+      final whaleSignal = WhaleWatchStrategy(
+        minBidAskImbalanceRatio: params.spotWhaleBidAskRatio,
+      ).evaluate(
         symbol: symbol,
         orderBook: orderBook,
         klines15m: klines15m,
@@ -165,7 +176,10 @@ class ScreeningEngine {
 
   /// Jalankan SEMUA 4 strategi Futures untuk satu [symbol]. Dipanggil
   /// dari tombol "ANALYZE FUTURES".
-  Future<List<StrategySignal>> analyzeFuturesPair(String symbol) async {
+  Future<List<StrategySignal>> analyzeFuturesPair(
+    String symbol,
+    StrategyParameters params,
+  ) async {
     final signals = <StrategySignal>[];
 
     final allTickers = await _api.fetchAllTickers(BinanceMarket.futures);
@@ -220,15 +234,16 @@ class ScreeningEngine {
             100
         : 0.0;
 
-    final trendSignal = _trendConfirm.evaluate(
+    final trendSignal = TrendConfirmStrategy(
+      minPriceChange4hPercent: params.futuresPriceChange4h,
+      minOiChange4hPercent: params.futuresOiChange4h,
+    ).evaluate(
       symbol: symbol,
       priceChange4hPercent: priceChange4h,
       fundingRate: fundingRate,
       oiNow: oiNow,
       oi4hAgo: oi4hAgo,
       currentVolume24h: ticker.quoteVolume,
-      // TODO: rata-rata volume 7 hari asli, saat ini placeholder pakai
-      // quoteVolume saat ini. Lihat README untuk detail.
       avgVolume7d: ticker.quoteVolume,
     );
     if (trendSignal != null) signals.add(trendSignal);
@@ -241,7 +256,10 @@ class ScreeningEngine {
       final prevChange =
           ((prevCandle.close - prevCandle.open) / prevCandle.open) * 100;
 
-      final squeezeSignal = _squeezeRadar.evaluate(
+      final squeezeSignal = SqueezeRadarStrategy(
+        extremeLongFundingThreshold: params.futuresFundingExtremeLong,
+        extremeShortFundingThreshold: params.futuresFundingExtremeShort,
+      ).evaluate(
         symbol: symbol,
         fundingRate: fundingRate,
         oiNow: oiNow,
@@ -252,7 +270,9 @@ class ScreeningEngine {
       if (squeezeSignal != null) signals.add(squeezeSignal);
     }
 
-    final lowCapFuturesSignal = _lowCapMomentumFutures.evaluate(
+    final lowCapFuturesSignal = LowCapMomentumFuturesStrategy(
+      minPriceChange1hPercent: params.futuresLowCapPriceChange1h,
+    ).evaluate(
       symbol: symbol,
       klines1h: klines1h,
       oiNow: oiNow,

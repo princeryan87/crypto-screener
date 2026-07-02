@@ -23,11 +23,15 @@ import '../strategy_base.dart';
 /// 15m sebagai proxy volatilitas/likuiditas, BUKAN spread historis
 /// asli (Binance tidak punya endpoint historical order book gratis).
 class WhaleWatchStrategy {
-  static const double minBidAskImbalanceRatio = 3.0;
+  final double minBidAskImbalanceRatio;
   static const double minVolumeSpikeMultiplier = 4.0;
   static const double maxPriceChangePercent = 1.0;
   static const double orderBookRangePercent = 1.0;
-  static const int volumeAvgLookbackCandles = 28; // ~7 jam candle 15m
+  static const int volumeAvgLookbackCandles = 28;
+
+  const WhaleWatchStrategy({
+    this.minBidAskImbalanceRatio = 3.0,
+  });
 
   StrategySignal? evaluate({
     required String symbol,

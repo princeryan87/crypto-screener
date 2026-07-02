@@ -17,13 +17,15 @@ import '../strategy_base.dart';
 /// price change 1h candle terakhir DAN candle sebelumnya (untuk
 /// deteksi momentum melambat).
 class SqueezeRadarStrategy {
-  static const double extremeLongFundingThreshold = 0.10;
-  static const double extremeShortFundingThreshold = -0.08;
+  final double extremeLongFundingThreshold;
+  final double extremeShortFundingThreshold;
   static const double minOiChange24hPercent = 10.0;
-  // Momentum dianggap "melambat" jika price change candle terakhir
-  // kurang dari setengah price change candle sebelumnya (magnitude),
-  // dengan arah yang sama.
   static const double momentumSlowdownRatio = 0.5;
+
+  const SqueezeRadarStrategy({
+    this.extremeLongFundingThreshold = 0.10,
+    this.extremeShortFundingThreshold = -0.08,
+  });
 
   StrategySignal? evaluate({
     required String symbol,

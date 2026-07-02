@@ -16,14 +16,21 @@ import '../strategy_base.dart';
 /// Data dibutuhkan: klines 1h (minimal 7 hari = 168 candle untuk
 /// hitung rata-rata volume 7 hari + warm-up EMA21).
 class MomentumBreakoutStrategy {
-  static const double minBodyToAtrRatio = 1.5;
-  static const double minVolumeMultiplier = 2.0;
-  static const double rsiLowerBound = 55;
-  static const double rsiUpperBound = 75;
+  final double minBodyToAtrRatio;
+  final double minVolumeMultiplier;
+  final double rsiLowerBound;
+  final double rsiUpperBound;
   static const int atrPeriod = 14;
   static const int emaShortPeriod = 9;
   static const int emaLongPeriod = 21;
-  static const int volumeAvgLookbackCandles = 168; // 7 hari x 24 candle 1h
+  static const int volumeAvgLookbackCandles = 168;
+
+  const MomentumBreakoutStrategy({
+    this.minBodyToAtrRatio = 1.5,
+    this.minVolumeMultiplier = 2.0,
+    this.rsiLowerBound = 55,
+    this.rsiUpperBound = 75,
+  });
 
   StrategySignal? evaluate({
     required String symbol,

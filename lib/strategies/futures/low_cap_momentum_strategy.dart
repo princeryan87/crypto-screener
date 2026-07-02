@@ -17,10 +17,14 @@ import '../strategy_base.dart';
 /// Data dibutuhkan: klines 1h (untuk price change & volume), OI
 /// sekarang + OI 1 jam lalu.
 class LowCapMomentumFuturesStrategy {
-  static const double minPriceChange1hPercent = 8.0;
+  final double minPriceChange1hPercent;
   static const double minOiChange1hPercent = 15.0;
   static const double minVolumeMultiplier = 3.0;
-  static const int volumeAvgLookbackCandles = 24; // 24 jam candle 1h
+  static const int volumeAvgLookbackCandles = 24;
+
+  const LowCapMomentumFuturesStrategy({
+    this.minPriceChange1hPercent = 8.0,
+  });
 
   StrategySignal? evaluate({
     required String symbol,

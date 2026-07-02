@@ -4,11 +4,16 @@ import '../theme/app_colors.dart';
 import '../widgets/animated_candlestick_background.dart';
 import '../widgets/cryptostrat_logo.dart';
 import '../widgets/donation_dialog.dart';
+import '../widgets/update_dialog.dart';
 import '../screening/screening_engine.dart';
 import '../services/binance_api_service.dart';
+import '../services/update_checker_service.dart';
+import '../services/parameters_service.dart';
 import '../models/strategy_signal.dart';
+import '../models/strategy_parameters.dart';
 import 'analyze_page.dart';
 import 'settings_page.dart';
+import 'parameter_tuning_page.dart';
 
 /// Landing page - satu-satunya halaman utama app (mode screening
 /// massal Spot/Futures sudah DIHAPUS, lihat catatan di
@@ -27,9 +32,47 @@ class _LandingPageState extends State<LandingPage> {
   final _baseController = TextEditingController(text: 'BTC');
   final _quoteController = TextEditingController(text: 'USDT');
   final _engine = ScreeningEngine();
+  final _updateChecker = UpdateCheckerService();
+  final _parametersService = ParametersService();
 
   bool _isValidating = false;
   String? _validationError;
+  StrategyParameters _params = StrategyParameters.defaults;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadParameters();
+    _checkForUpdate();
+  }
+
+  Future<void> _loadParameters() async {
+    final params = await _parametersService.load();
+    if (mounted) setState(() => _params = params);
+  }
+
+  Future<void> _openParameterTuning(MarketType mode) async {
+    final result = await Navigator.of(context).push<StrategyParameters>(
+      MaterialPageRoute(
+        builder: (_) => ParameterTuningPage(
+          mode: mode,
+          initialParams: _params,
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() => _params = result);
+    }
+  }
+
+  /// Cek update saat app pertama dibuka. Gagal secara senyap (return
+  /// null dari service) tidak mengganggu pengalaman user sama sekali.
+  Future<void> _checkForUpdate() async {
+    final info = await _updateChecker.checkForUpdate();
+    if (info != null && mounted) {
+      await showUpdateDialog(context, info);
+    }
+  }
 
   @override
   void dispose() {
@@ -96,7 +139,11 @@ class _LandingPageState extends State<LandingPage> {
 
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => AnalyzePage(symbol: symbol, mode: mode),
+          builder: (_) => AnalyzePage(
+            symbol: symbol,
+            mode: mode,
+            params: _params,
+          ),
         ),
       );
     } catch (e) {
@@ -209,6 +256,10 @@ class _LandingPageState extends State<LandingPage> {
                           _onAnalyzePressed(context, MarketType.spot),
                       onAnalyzeFutures: () =>
                           _onAnalyzePressed(context, MarketType.futures),
+                      onTuneSpot: () =>
+                          _openParameterTuning(MarketType.spot),
+                      onTuneFutures: () =>
+                          _openParameterTuning(MarketType.futures),
                     ),
                     const Spacer(flex: 2),
                     const _FooterCredit(),
@@ -248,6 +299,8 @@ class _PairInputSection extends StatelessWidget {
   final String? validationError;
   final VoidCallback onAnalyzeSpot;
   final VoidCallback onAnalyzeFutures;
+  final VoidCallback onTuneSpot;
+  final VoidCallback onTuneFutures;
 
   const _PairInputSection({
     required this.baseController,
@@ -256,6 +309,8 @@ class _PairInputSection extends StatelessWidget {
     required this.validationError,
     required this.onAnalyzeSpot,
     required this.onAnalyzeFutures,
+    required this.onTuneSpot,
+    required this.onTuneFutures,
   });
 
   @override
@@ -328,39 +383,91 @@ class _PairInputSection extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: ElevatedButton(
-                  onPressed: isValidating ? null : onAnalyzeSpot,
-                  child: isValidating
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.black,
+                child: Column(
+                  children: [
+                    ElevatedButton(
+                      onPressed: isValidating ? null : onAnalyzeSpot,
+                      child: isValidating
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.black,
+                              ),
+                            )
+                          : const Text('ANALYZE SPOT'),
+                    ),
+                    const SizedBox(height: 6),
+                    GestureDetector(
+                      onTap: onTuneSpot,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.tune_rounded,
+                            color: AppColors.primaryGreen.withOpacity(0.7),
+                            size: 14,
                           ),
-                        )
-                      : const Text('ANALYZE SPOT'),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Parameter',
+                            style: TextStyle(
+                              color: AppColors.primaryGreen.withOpacity(0.7),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.surfaceElevated,
-                    foregroundColor: AppColors.warningAmber,
-                    side: const BorderSide(color: AppColors.warningAmber),
-                  ),
-                  onPressed: isValidating ? null : onAnalyzeFutures,
-                  child: isValidating
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.warningAmber,
+                child: Column(
+                  children: [
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.surfaceElevated,
+                        foregroundColor: AppColors.warningAmber,
+                        side: const BorderSide(color: AppColors.warningAmber),
+                      ),
+                      onPressed: isValidating ? null : onAnalyzeFutures,
+                      child: isValidating
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.warningAmber,
+                              ),
+                            )
+                          : const Text('ANALYZE FUTURES'),
+                    ),
+                    const SizedBox(height: 6),
+                    GestureDetector(
+                      onTap: onTuneFutures,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.tune_rounded,
+                            color: AppColors.warningAmber.withOpacity(0.7),
+                            size: 14,
                           ),
-                        )
-                      : const Text('ANALYZE FUTURES'),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Parameter',
+                            style: TextStyle(
+                              color: AppColors.warningAmber.withOpacity(0.7),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

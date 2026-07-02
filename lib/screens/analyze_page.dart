@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/strategy_signal.dart';
+import '../models/strategy_parameters.dart';
 import '../screening/screening_engine.dart';
 import '../services/settings_service.dart';
 import '../services/gemini_analysis_service.dart';
@@ -17,8 +18,14 @@ import '../widgets/disclaimer_banner.dart';
 class AnalyzePage extends StatefulWidget {
   final String symbol;
   final MarketType mode;
+  final StrategyParameters params;
 
-  const AnalyzePage({super.key, required this.symbol, required this.mode});
+  const AnalyzePage({
+    super.key,
+    required this.symbol,
+    required this.mode,
+    required this.params,
+  });
 
   @override
   State<AnalyzePage> createState() => _AnalyzePageState();
@@ -57,8 +64,8 @@ class _AnalyzePageState extends State<AnalyzePage> {
 
     try {
       final results = widget.mode == MarketType.spot
-          ? await _engine.analyzeSpotPair(widget.symbol)
-          : await _engine.analyzeFuturesPair(widget.symbol);
+          ? await _engine.analyzeSpotPair(widget.symbol, widget.params)
+          : await _engine.analyzeFuturesPair(widget.symbol, widget.params);
       setState(() => _signals = results);
     } catch (e) {
       setState(() {
